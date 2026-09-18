@@ -1,0 +1,103 @@
+
+<<<<<<<funkcje>>>>>>>
+
+1.  @ GETGOODS :
+
+USE [erpxl_lechtom]
+GO
+/****** Obiekt: UserDefinedFunction [B2B].[GetOfferGoods] Data skryptu: 17.09.2026 15:16:38 ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+
+-- =============================================
+-- Author:      Mariusz Sikociński
+-- Create date: 2025-09-17
+-- Description: Pobieranie listy produktów dla B2B (wersja inline, zoptymalizowana)
+-- =============================================
+ALTER  FUNCTION [B2B].[GetOfferGoods]
+(
+    
+)
+RETURNS TABLE
+AS
+RETURN
+WITH 
+
+zasoby AS (
+    SELECT z.TwZ_TwrNumer AS TwrId
+    FROM cdn.twrzasoby z
+    JOIN cdn.TwrKarty tk ON tk.Twr_GIDNumer = z.TwZ_TwrNumer
+	left join cdn.TwrGrupyDom on Twr_GIDTyp=TGD_GIDTyp AND twr_GIDNumer=tgd_GIDNumer  
+    WHERE tk.Twr_Archiwalny = 0 and Twr_Nazwa not like ('%Prom%') and Twr_Nazwa not like ('%Pakiet%') and TGD_GrONumer not in (2609,6567) and TwZ_MagNumer not in (64)
+    GROUP BY z.TwZ_TwrNumer
+    HAVING SUM(z.TwZ_Ilosc) > 0
+),
+towary AS (
+    SELECT z.TwrId AS id
+    FROM zasoby z
+
+),
+cena100 AS (
+    SELECT TwC_TwrNumer, TwC_Wartosc
+    FROM cdn.TwrCeny where twc_twrlp=1
+),
+cenaZakupu AS (
+    SELECT TwC_TwrNumer, TwC_Wartosc
+    FROM cdn.TwrCeny where twc_twrlp=0
+)
+
+SELECT
+    tk.Twr_GIDNumer                                    AS Id,
+    tk.Twr_Kod                                         AS Kod,
+    tk.Twr_Nazwa                                       AS Nazwa,
+    isnull(Katal.Typ,'Gastro') As Typ,
+    tg.TwG_Nazwa                                       AS Grupa,
+    s.slw_WartoscS                                     AS Marka,
+    CAST(tk.Twr_StawkaPodSpr AS DECIMAL(32,2))         AS Vat,                    
+    CAST(ISNULL(tc.TwC_Wartosc, 0) AS DECIMAL(32,2))   AS Cena100,
+    CAST(ISNULL(tz.TwC_Wartosc, 0) AS DECIMAL(32,2))   AS CenaZakupu,
+    kom.KodEanSzt(tk.Twr_GIDNumer)                     AS EAN,
+    tk.Twr_Jm                                          AS Jm,
+    jmz.TwJ_JmZ                                        AS JmDodatkowa,
+    jmz.TwJ_PrzeliczM                                  AS PrzeliczL,
+    jmz.TwJ_PrzeliczL                                  AS PrzeliczM,
+    isnull(Katal.Katalog,'Inne')                       AS Kategoria,
+    case when exists(select top 1 DAO_DABId from cdn.daneobiekty where DAO_ObiNumer=tk.twr_gidnumer and DAO_ObiTyp=tk.twr_gidtyp) then  'https://www.lechtom.pl/media/produkty/'+tk.Twr_Kod +'.webp' else 'https://i.imgur.com/ujJv4Jw.png' end  AS UrlImage
+
+
+FROM towary tw
+JOIN cdn.TwrKarty tk  ON tk.Twr_GIDNumer = tw.id
+LEFT JOIN cdn.TwrGrupyDom tgd
+       ON tgd.TGD_GIDNumer = tk.Twr_GIDNumer AND tgd.TGD_GIDTyp = tk.Twr_GIDTyp
+LEFT JOIN cdn.TwrGrupy   tg
+       ON tg.TwG_GIDNumer  = tgd.TGD_GrONumer AND tg.TwG_GIDTyp = -16
+
+LEFT JOIN cena100 tc
+       ON tc.TwC_TwrNumer = tk.Twr_GIDNumer
+
+LEFT JOIN cenaZakupu tz
+       oN tz.TwC_TwrNumer = tk.Twr_GIDNumer
+
+LEFT JOIN CDN.Slowniki s ON s.SLW_ID = Twr_MarkaId
+
+OUTER APPLY (
+    SELECT TOP (1) case when gr.TwG_GrONumer= 14557 then 'Detal' else 'Gastro' end as Typ,
+    gr.TwG_Nazwa as Katalog
+    FROM cdn.Twrgrupy gr
+    join cdn.Twrgrupy t on gr.TwG_GIDNumer=t.twg_gronumer and gr.twg_gidtyp=t.twg_grotyp and t.twg_gidtyp=16
+    WHERE gr.TwG_GrONumer in (14557,14558) and gr.Twg_gidtyp=-16 and t.twg_gidnumer=tk.Twr_GIDNumer 
+) katal
+
+OUTER APPLY (
+    SELECT TOP (1) TwJ_JmZ, TwJ_PrzeliczL, TwJ_PrzeliczM
+    FROM cdn.TwrJm
+    WHERE TwJ_TwrNumer = tk.Twr_GIDNumer
+      AND TwJ_JmZ IN ('KART','SZT.','SZT','op.')
+      AND (TwJ_PrzeliczL <> 1 OR TwJ_PrzeliczM <> 1)
+    ORDER BY TwJ_jmz desc
+) jmz
+
+
+	  
