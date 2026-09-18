@@ -49,9 +49,13 @@ Folder `projects` można zmienić w Ustawieniach, również na folder sieciowy. 
 
 `project.json` ma `schemaVersion: 1`, identyfikator, nazwę, daty utworzenia i aktualizacji, zakres ważności, ustawienia A4 oraz uporządkowaną listę stron. Każdy produkt na stronie zawiera identyfikator ERP, migawkę danych produktu i `customData` na ręczne nadpisania. Podgląd i PDF korzystają z migawki, więc otwarcie katalogu nie wymaga bieżącego połączenia z ERP. Plik jest walidowany przez Zod i zapisywany przez `project.json.tmp` → `project.json`.
 
-Nowy katalog ma cztery stałe strony: przygotowaną okładkę, spis treści, reklamę ezamshop i stronę oddziałów, telefonów oraz marek. Strony produktów 12/16 są dodawane pomiędzy spisem treści a reklamą. Grafikę okładki, reklamy, tło i logo można wybrać w edytorze. Dane kontaktowe można wpisać ręcznie; żadnych danych oddziałów nie pobieramy jeszcze z ERP. Spis treści i lista marek wynikają ze stron produktów.
+Nowy katalog ma cztery stałe strony: przygotowaną okładkę, spis treści, reklamę ezamshop i stronę oddziałów, telefonów oraz marek. Strony produktów w układach 12, 15 lub 16 kart są dodawane pomiędzy spisem treści a reklamą. Grafikę okładki, reklamy, tło i logo można wybrać w edytorze. Dane kontaktowe można wpisać ręcznie; żadnych danych oddziałów nie pobieramy jeszcze z ERP. Spis treści i lista marek wynikają ze stron produktów.
 
 Po wybraniu marki aplikacja szuka logotypu w `library/brands/` według znormalizowanej nazwy pliku lub aliasu z `brands.json`. Logo można nadpisać dla danej strony. Projekt można też zduplikować z listy katalogów.
+
+Lista ERP i okno „Dodaj produkty” używają wspólnych miniatur z podglądem po najechaniu. Zdjęcia wyników są ładowane leniwie, tylko dla bieżącej strony. W edytorze kliknięcie produktu na A4 lub w liście slotów otwiera panel nadpisań: nazwa, etykiety, własne zdjęcie i widoczność pól. Zmiany są zapisywane wyłącznie w `project.json`; zdjęcie własne trafia do lokalnej biblioteki `library/products/`.
+
+Na karcie produktu poprawny 13-cyfrowy EAN jest drukowany jako wektorowy kod EAN-13 z numerem pod paskami. Generator sprawdza cyfrę kontrolną. Przy pustym EAN nie pokazuje kodu, a przy nieprawidłowym zostawia tylko tekstowy numer; kodu ERP nie używa jako zamiennika EAN. Widoczność kodu można zmienić dla strony lub pojedynczego produktu.
 
 ## ERP
 

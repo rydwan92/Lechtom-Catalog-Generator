@@ -16,8 +16,13 @@ try {
   repository.savePage({ id: pageId, catalogId: catalog.id, pageType: 'BRAND_PRODUCTS', templateCode: 'PRODUCT_GRID_12', sortOrder: 2, manufacturerRef: 'Hortex', configuration: {}, enabled: true, items: [] })
   const product = { id: '0:42', erpGidNumer: 42, erpGidTyp: 0, code: 'X', ean: '123', name: 'Produkt', type: 'Gastro', group: null, manufacturer: 'Hortex', brand: 'Hortex', category: 'Owoce', unit: { baseUnit: 'kg', displayUnit: 'kg', conversionNumerator: null, conversionDenominator: null, conversionFactor: null, hasAlternativeUnit: false }, weight: null, itemsPerBox: null, vatRate: 23, image: null, stock: null, active: true }
   repository.setPageItems(pageId, [{ id: randomUUID(), pageId, slotKey: 'product01', erpId: 42, erpProductGidNumer: 42, erpProductGidTyp: 0, sortOrder: 0, customData: {}, overrides: { displayName: null, weightLabel: null, boxLabel: null, customImage: null, hiddenFields: [] }, product }])
+  const edited = repository.get(catalog.id).pages[2].items[0]
+  repository.setPageItems(pageId, [{ ...edited, overrides: { ...edited.overrides, displayName: 'Nazwa w katalogu', customImage: 'lechtom-media://asset/local-image', hiddenFields: ['ean'] } }])
   const reopened = new FileProjectRepository({ get: () => ({ projectsFolder: directory }) }).get(catalog.id)
   assert.equal(reopened.pages[2].items[0].product.name, 'Produkt')
+  assert.equal(reopened.pages[2].items[0].overrides.displayName, 'Nazwa w katalogu')
+  assert.equal(reopened.pages[2].items[0].overrides.customImage, 'lechtom-media://asset/local-image')
+  assert.deepEqual(reopened.pages[2].items[0].overrides.hiddenFields, ['ean'])
   assert.equal(reopened.pages.at(-1).pageType, 'CONTACTS')
   assert.equal(fs.existsSync(path.join(directory, catalog.id, 'project.json')), true)
   assert.equal(fs.existsSync(path.join(directory, catalog.id, 'project.json.tmp')), false)
