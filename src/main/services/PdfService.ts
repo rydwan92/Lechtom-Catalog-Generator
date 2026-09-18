@@ -1,16 +1,17 @@
-import { app, BrowserWindow, dialog } from 'electron'
+import { BrowserWindow, dialog } from 'electron'
 import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import type { CatalogRepository } from '../db/sqlite/CatalogRepository'
+import type { FileProjectRepository } from '../projects/FileProjectRepository'
+import type { SettingsService } from './SettingsService'
 
 export class PdfService {
-  constructor(private catalogs: CatalogRepository, private preload: string, private allowWindow: (window: BrowserWindow) => void) {}
+  constructor(private catalogs: FileProjectRepository, private preload: string, private allowWindow: (window: BrowserWindow) => void, private settings: SettingsService) {}
   async export(catalogId: string): Promise<string | null> {
     const catalog = this.catalogs.get(catalogId)
     if (!catalog) throw new Error('Nie znaleziono katalogu')
-    await mkdir(join(app.getPath('userData'), 'exports'), { recursive: true })
+    await mkdir(join(this.settings.root, 'exports'), { recursive: true })
     const suggested = `Oferta_LECHTOM_${catalog.validFrom ?? 'od'}_${catalog.validTo ?? 'do'}.pdf`.replace(/[^a-zA-Z0-9_.-]/g, '_')
-    const selection = await dialog.showSaveDialog({ defaultPath: join(app.getPath('userData'), 'exports', suggested), filters: [{ name: 'PDF', extensions: ['pdf'] }] })
+    const selection = await dialog.showSaveDialog({ defaultPath: join(this.settings.root, 'exports', suggested), filters: [{ name: 'PDF', extensions: ['pdf'] }] })
     if (selection.canceled || !selection.filePath) return null
     const window = new BrowserWindow({ show: false, webPreferences: { preload: this.preload, contextIsolation: true, nodeIntegration: false, sandbox: false } })
     this.allowWindow(window)

@@ -1,24 +1,17 @@
 # LECHTOM Catalog Generator
 
-Wewnętrzna aplikacja Windows do układania katalogów A4 z produktów Comarch ERP XL i eksportu PDF. Pierwsza iteracja obejmuje lokalne katalogi, szablon okładki, spis treści, siatki 12/16 produktów, przeglądarkę produktów ERP, media, QR oraz konfigurację połączenia.
+Desktopowy edytor katalogów A4 dla LECHTOM. Produkty są czytane z Comarch ERP XL, a projekty są zapisywane jako pliki JSON. Aplikacja nie używa lokalnej bazy SQL.
 
 ## Uruchomienie
 
-Wymagany Node.js 22.12+ i Windows 10/11.
+Wymagane: Node.js 22.12+ i Windows 10/11.
 
 ```powershell
 npm install
 npm run dev
 ```
 
-`npm install` automatycznie przebudowuje natywne `better-sqlite3` dla Electron. Jeśli środowisko ma ustawioną zmienną `ELECTRON_RUN_AS_NODE`, usuń ją w bieżącej sesji przed `npm run dev`.
-
-```powershell
-Remove-Item Env:ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue
-npm run dev
-```
-
-Weryfikacja i instalator Windows:
+Weryfikacja:
 
 ```powershell
 npm run lint
@@ -26,52 +19,76 @@ npm run typecheck
 npm test
 npm run test:integration
 npm run build
-npm run dist:win
+npm run test:pdf
 ```
 
-Instalator NSIS znajduje się w `dist/`. Baza, media i eksporty znajdują się w katalogu `app.getPath('userData')` użytkownika Windows. Migracje SQLite uruchamiają się przy starcie aplikacji.
+Jeżeli bieżąca sesja ma ustawione `ELECTRON_RUN_AS_NODE`, usuń tę zmienną przed `npm run dev` lub `npm run test:pdf`: `Remove-Item Env:ELECTRON_RUN_AS_NODE -ErrorAction SilentlyContinue`.
 
-## Architektura
+Instalator Windows: `npm run dist:win`.
 
-- `src/main/db/sqlite/`: lokalny model Drizzle i repozytorium katalogów; migracje w `drizzle/`.
-- `src/main/integrations/erp/`: wyłącznie odczyt z SQL Server, z zamkniętą listą zapytań.
-- `src/main/ipc/`: walidowane operacje IPC, bez kanału do dowolnego SQL.
-- `src/main/services/`: media, QR i eksport PDF.
-- `src/preload/`: jawne `window.lechtom`.
-- `src/domain/`, `src/shared/`: model domenowy, typy i walidacja Zod.
-- `src/renderer/`: widoki React i wspólny `CatalogPageRenderer` używany w edytorze i PDF.
+## Projekty i zasoby
 
-SQLite ma 10 tabel: `catalogs`, `catalog_pages`, `catalog_page_items`, `page_templates`, `manufacturer_presentations`, `product_presentations`, `media_assets`, `qr_codes`, `contact_locations`, `catalog_settings`. Produkty ERP nie są kopiowane do SQLite. `product_presentations` łączy przyszłe dane prezentacyjne z produktem po parze `erp_gid_numer`, `erp_gid_typ`.
+Domyślny katalog danych to `Documents/LECHTOM Catalog Generator/`:
 
-## ERP i bezpieczeństwo
+```text
+library/
+  brands/          logotypy
+  backgrounds/     tła i grafiki całych stron
+  products/        inne grafiki
+  brands.json      opcjonalne aliasy nazwa marki → nazwa pliku
+  assets.json      indeks importowanych grafik
+  qr.json          zapisane kody QR
+projects/
+  <uuid>/
+    project.json
+    assets/
+exports/
+```
 
-Połączenie `mssql` działa tylko w procesie main. Renderer ma `contextIsolation: true`, `nodeIntegration: false` i preload z konkretnymi metodami. IPC sprawdza okno źródłowe i waliduje dane wejściowe przez Zod. Hasło konfiguracji jest szyfrowane przez Electron `safeStorage` i zapisywane poza SQLite; nie jest zwracane rendererowi po odczycie konfiguracji.
+Folder `projects` można zmienić w Ustawieniach, również na folder sieciowy. Konfiguracja folderu i zaszyfrowane hasło ERP znajdują się w `app.getPath('userData')`. Hasło jest szyfrowane przez Electron `safeStorage`.
 
-Jedyny executor przyjmuje nazwę jednego z przygotowanych SELECT-ów. Używane zapytania:
+`project.json` ma `schemaVersion: 1`, identyfikator, nazwę, daty utworzenia i aktualizacji, zakres ważności, ustawienia A4 oraz uporządkowaną listę stron. Każdy produkt na stronie zawiera identyfikator ERP, migawkę danych produktu i `customData` na ręczne nadpisania. Podgląd i PDF korzystają z migawki, więc otwarcie katalogu nie wymaga bieżącego połączenia z ERP. Plik jest walidowany przez Zod i zapisywany przez `project.json.tmp` → `project.json`.
+
+Nowy katalog ma cztery stałe strony: przygotowaną okładkę, spis treści, reklamę ezamshop i stronę oddziałów, telefonów oraz marek. Strony produktów 12/16 są dodawane pomiędzy spisem treści a reklamą. Grafikę okładki, reklamy, tło i logo można wybrać w edytorze. Dane kontaktowe można wpisać ręcznie; żadnych danych oddziałów nie pobieramy jeszcze z ERP. Spis treści i lista marek wynikają ze stron produktów.
+
+Po wybraniu marki aplikacja szuka logotypu w `library/brands/` według znormalizowanej nazwy pliku lub aliasu z `brands.json`. Logo można nadpisać dla danej strony. Projekt można też zduplikować z listy katalogów.
+
+## ERP
+
+Połączenie `mssql` istnieje wyłącznie w procesie Electron main. Renderer wywołuje konkretne metody IPC; nie ma dostępu do connection stringa ani do dowolnego SQL. Dostęp do ERP jest tylko do odczytu. Używane zapytania to:
 
 ```sql
 SELECT 1 AS ConnectionOk, DB_NAME() AS DatabaseName, @@SERVERNAME AS ServerName
 
-SELECT Twr_GIDNumer, Twr_GIDTyp, Twr_Kod, Twr_Nazwa, Twr_Jm, Twr_StawkaPodSpr
-FROM CDN.TwrKarty
-WHERE (@query = '' OR Twr_Kod LIKE @pattern ESCAPE '\' OR Twr_Nazwa LIKE @pattern ESCAPE '\')
-ORDER BY Twr_Kod OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY
+SELECT Id, Kod, Nazwa, Typ, Grupa, Marka, Vat, EAN, Jm, JmDodatkowa,
+       PrzeliczL, PrzeliczM, Kategoria, UrlImage
+FROM B2B.GetOfferGoods()
+WHERE (@query = '' OR Kod LIKE @pattern ESCAPE '\' OR Nazwa LIKE @pattern ESCAPE '\' OR EAN LIKE @pattern ESCAPE '\')
+  AND (@brand = '' OR Marka = @brand)
+  AND (@category = '' OR Kategoria = @category)
+  AND (@type = '' OR Typ = @type)
+ORDER BY Kod, Id OFFSET @offset ROWS FETCH NEXT @pageSize ROWS ONLY
 
-SELECT COUNT_BIG(1) AS Total FROM CDN.TwrKarty
-WHERE (@query = '' OR Twr_Kod LIKE @pattern ESCAPE '\' OR Twr_Nazwa LIKE @pattern ESCAPE '\')
+SELECT COUNT_BIG(1) AS Total FROM B2B.GetOfferGoods()
+WHERE (@query = '' OR Kod LIKE @pattern ESCAPE '\' OR Nazwa LIKE @pattern ESCAPE '\' OR EAN LIKE @pattern ESCAPE '\')
+  AND (@brand = '' OR Marka = @brand)
+  AND (@category = '' OR Kategoria = @category)
+  AND (@type = '' OR Typ = @type)
 
-SELECT Twr_GIDNumer, Twr_GIDTyp, Twr_Kod, Twr_Nazwa, Twr_Jm, Twr_StawkaPodSpr
-FROM CDN.TwrKarty WHERE Twr_GIDNumer = @gidNumer AND Twr_GIDTyp = @gidTyp
+SELECT Id, Kod, Nazwa, Typ, Grupa, Marka, Vat, EAN, Jm, JmDodatkowa,
+       PrzeliczL, PrzeliczM, Kategoria, UrlImage
+FROM B2B.GetOfferGoods() WHERE Id = @gidNumer
+
+SELECT DISTINCT Marka AS Value FROM B2B.GetOfferGoods() WHERE Marka IS NOT NULL AND Marka <> '' ORDER BY Value
+SELECT DISTINCT Kategoria AS Value FROM B2B.GetOfferGoods() WHERE Kategoria IS NOT NULL AND Kategoria <> '' ORDER BY Value
+SELECT DISTINCT Typ AS Value FROM B2B.GetOfferGoods() WHERE Typ IS NOT NULL AND Typ <> '' ORDER BY Value
 ```
 
-Wartości użytkownika są przekazywane jako parametry `mssql`. Kod nie wykonuje żadnych zapisów do ERP. Docelowe konto SQL Server musi otrzymać wyłącznie uprawnienia SELECT do niezbędnych obiektów.
+Zapytania są stałe, a wartości filtrów parametryzowane. Kod nie wykonuje wobec ERP `INSERT`, `UPDATE`, `DELETE`, `MERGE`, `EXEC` ani DDL. Plik `SQL ERP` jest tylko dokumentacją istniejącej funkcji i nigdy nie jest wykonywany. `CenaZakupu` oraz `Cena100` nie są pobierane. Docelowe konto SQL powinno mieć tylko uprawnienia odczytu do funkcji.
 
-**Ograniczenie schematu:** w dostarczonym workspace nie ma definicji `B2B.GetGoods` ani `B2B.GetGoodsByGroup`, ani dostępu do firmowej bazy. EAN, producent, kategoria, stan, waga i przelicznik dodatkowej jednostki pozostają `null`; filtry producenta i kategorii są wyłączone. Po otrzymaniu definicji funkcji należy sprawdzić mapowanie do `CDN.TwrJm` i pozostałych źródeł, a potem dodać wyłącznie wymagane kolumny i JOIN-y. Produkty o jednostce bazowej `kg` zachowują `kg`, dopóki nie ma zweryfikowanego przelicznika.
+## Ograniczenia obecnej iteracji
 
-## Kolejne kroki
-
-1. Zweryfikować definicje funkcji B2B i konto SQL tylko do odczytu w środowisku firmy.
-2. Uzupełnić mapowanie EAN, producenta, kategorii, stanów, wag i jednostek.
-3. Dodać zarządzanie prezentacją produktów i producentów oraz przypinanie mediów/QR do slotów.
-4. Rozwinąć edytor o pozostałe szablony, automatyczne generowanie stron i kontakty.
-5. Przetestować eksport wielostronicowych katalogów i wydruk na docelowych stanowiskach.
+- Połączenia z firmowym ERP nie da się sprawdzić bez konfiguracji i dostępu do serwera. Funkcja `B2B.GetOfferGoods()` musi już istnieć w bazie.
+- Stare dane aplikacji w SQLite pozostają na dysku użytkownika, ale nowy format nie importuje ich automatycznie. Przed użyciem na stanowisku z istniejącymi katalogami potrzebna będzie jednorazowa migracja.
+- Zdjęcia produktów z ERP są ładowane z `UrlImage` podczas podglądu i eksportu. Aby mieć pełny eksport offline, trzeba je później skopiować do `assets/` projektu.
+- Składka drukarska i wyrównanie liczby stron do wielokrotności czterech wymagają osobnej weryfikacji z drukarnią. PDF eksportuje strony A4 w kolejności katalogu.

@@ -7,5 +7,6 @@ export function mapUnit(baseUnit: string, alternative?: { unit: string; numerato
 }
 
 export function mapProduct(row: ErpProductRow): Product {
-  return { id: `${row.Twr_GIDTyp}:${row.Twr_GIDNumer}`, erpGidNumer: row.Twr_GIDNumer, erpGidTyp: row.Twr_GIDTyp, code: row.Twr_Kod, ean: null, name: row.Twr_Nazwa, manufacturer: null, brand: null, category: null, unit: mapUnit(row.Twr_Jm), weight: null, itemsPerBox: null, vatRate: row.Twr_StawkaPodSpr, image: null, stock: null, active: true }
+  const alternative = row.JmDodatkowa && row.PrzeliczL && row.PrzeliczM ? { unit: row.JmDodatkowa, numerator: Number(row.PrzeliczL), denominator: Number(row.PrzeliczM) } : null
+  return { id: `0:${row.Id}`, erpGidNumer: row.Id, erpGidTyp: 0, code: row.Kod, ean: row.EAN, name: row.Nazwa, type: row.Typ, group: row.Grupa, manufacturer: row.Marka, brand: row.Marka, category: row.Kategoria, unit: mapUnit(row.Jm, alternative), weight: null, itemsPerBox: null, vatRate: row.Vat == null ? null : Number(row.Vat), image: row.UrlImage, stock: null, active: true }
 }
